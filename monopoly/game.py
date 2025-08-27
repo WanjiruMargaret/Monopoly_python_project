@@ -2,7 +2,7 @@
 # Emmanuel: Game state + turn manager (core engine of the Monopoly game)
 
 import random
-from board import Board
+from monopoly.board import Board
 from player import Player
 from card import draw_chance_card, draw_community_card
 from utils.ui import print_colored
