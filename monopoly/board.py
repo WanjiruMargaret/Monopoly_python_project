@@ -1,9 +1,9 @@
 from rich.console import Console
-Console = Console()
 
-## board and tile setup
+console = Console()
 
-board = [ ## id borad that has a row that is loop into
+# The Monopoly board layout (40 spaces)
+board = [
     "Go",
     "Mediterranean Avenue",
     "Community Chest",
@@ -45,6 +45,8 @@ board = [ ## id borad that has a row that is loop into
     "Luxury Tax",
     "Boardwalk"
 ]
+
+# Property colors
 property_colors = {
     "Mediterranean Avenue": "#A52A2A",
     "Baltic Avenue": "#A52A2A",
@@ -70,16 +72,8 @@ property_colors = {
     "Boardwalk": "blue"
 }
 
-
-
-
-def real_board(board):
-
-    Console.print("[mint_green]board[/mint_green]\n") ## board color
+def print_board():
+    console.print("[bold mint_green]Monopoly Board[/bold mint_green]\n")
     for space in board:
-        color = property_colors.get(space, "boal green")  # Default "boal greean" if not in dictionary (like Go, Jail, Chance, etc.)
-        Console.print(f"[bold {color}]{space}[/bold {color}]")
-real_board(board) ## calling out the board 
-
-
-
+        color = property_colors.get(space, "white")
+        console.print(f"[bold {color}]{space}[/bold {color}]")
