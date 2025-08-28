@@ -1,156 +1,84 @@
-# main.py
+from rich.console import Console
+from rich.table import Table
+from rich.prompt import Prompt
 import random
+
 from player import Player
-from tile import Tile
-from cards import draw_chance, draw_community_chest
-from board import board, print_board  # board is the list of names; print_board is optional styling
+from board import board
+from db import init_db, save_player, load_players
 
-def setup_players():
-    players = []
-    while True:
-        try:
-            num = int(input("Enter number of players (2–4): ").strip())
-            if 2 <= num <= 4:
-                break
-            print("Please enter a number between 2 and 4.")
-        except ValueError:
-            print("Please enter a valid number.")
-    for i in range(num):
-        name = input(f"Enter name for Player {i+1}: ").strip() or f"Player{i+1}"
-        players.append(Player(name))
-    return players
+console = Console()
 
-def setup_tiles():
-    tiles = []
-    for i, name in enumerate(board):
-        # simple type inference from name
-        if any(k in name for k in ["Avenue", "Gardens", "Place", "Boardwalk", "Park Place"]):
-            # simple placeholder pricing
-            price = 100 + (i % 10) * 10
-            rent = 10 + (i % 10) * 2
-            tiles.append(Tile(name, i, "property", price=price, rent=rent))
-        elif any(k in name for k in ["Railroad", "Company", "Works"]):
-            tiles.append(Tile(name, i, "property", price=200, rent=25))
-        elif "Tax" in name:
-            tiles.append(Tile(name, i, "tax"))
-        elif name == "Chance":
-            tiles.append(Tile(name, i, "chance"))
-        elif name == "Community Chest":
-            tiles.append(Tile(name, i, "community"))
-        elif name == "Jail":
-            tiles.append(Tile(name, i, "jail"))
-        elif name == "Go to Jail":
-            tiles.append(Tile(name, i, "go_to_jail"))
-        elif name == "Go":
-            tiles.append(Tile(name, i, "go"))
-        else:
-            tiles.append(Tile(name, i, "other"))
-    return tiles
+def display_players(players):
+    table = Table(title="🏦 Monopoly Game - Players")
+    table.add_column("Name", style="cyan")
+    table.add_column("Money", justify="right", style="green")
+    table.add_column("Position", justify="right", style="magenta")
+    table.add_column("Properties", style="yellow")
 
-def handle_card(player, card_tuple, tiles_len):
-    text, action, value = card_tuple
-    print(f"Card: {text}")
-    if action == "move":
-        # moving directly: collect $200 if we pass Go
-        old_pos = player.position
-        player.position = value % tiles_len
-        if player.position < old_pos:
-            player.money += 200
-            print(f"{player.name} passed GO and collected $200.")
-    elif action == "money":
-        player.money += value
-        if value >= 0:
-            print(f"{player.name} received ${value}.")
-        else:
-            print(f"{player.name} paid ${-value}.")
-    elif action == "jail":
-        # simple jail: move to 10 and mark jailed for 2 turns if your Player supports it
-        if hasattr(player, "go_to_jail"):
-            print(player.go_to_jail())
-        else:
-            player.position = 10
-            print(f"{player.name} sent to Jail.")
+    for p in players:
+        props = ", ".join([prop.name for prop in p.properties]) if p.properties else "-"
+        table.add_row(p.name, f"${p.money}", str(p.position), props)
 
-def take_turn(player, tiles):
-    input(f"\n{player.name}, press Enter to roll dice...")
-    d1, d2 = random.randint(1, 6), random.randint(1, 6)
-    roll = d1 + d2
-    print(f"{player.name} rolled {d1} + {d2} = {roll}")
+    console.print(table)
 
-    # move (handle pass GO in your Player.move if you implemented it)
-    if hasattr(player, "move"):
-        # If your Player.move expects board_size:
-        try:
-            msg = player.move(roll, len(tiles))
-            if msg:
-                print(msg)
-        except TypeError:
-            # fallback if your Player.move only takes steps
-            player.move(roll)
-    else:
-        player.position = (player.position + roll) % len(tiles)
+def take_turn(player, board, players):
+    if player.in_jail:
+        console.print(f"[red]{player.name} is in jail![/red] (turns left: {player.jail_turns})")
+        player.move(0)
+        return
 
-    tile = tiles[player.position]
-    print(f"{player.name} landed on {tile.name}")
+    input(f"\n🎲 {player.name}, press ENTER to roll the dice... ")
+    dice = random.randint(1, 6) + random.randint(1, 6)
+    console.print(f"{player.name} rolled a [bold cyan]{dice}[/bold cyan]!")
 
-    # Tile logic
+    result = player.move(dice)
+    console.print(result)
+
+    tile = board[player.position % len(board)]
     if tile.tile_type == "property":
         if tile.owner is None:
-            choice = input(f"Do you want to buy {tile.name} for ${tile.price}? (y/n): ").strip().lower()
-            if choice == "y":
-                print(tile.buy(player))
+            choice = Prompt.ask(f"Do you want to buy {tile.name} for ${tile.price}? (y/n)", choices=["y", "n"])
+            if choice.lower() == "y":
+                console.print(tile.buy(player))
         else:
-            print(tile.pay_rent(player))
-
+            console.print(tile.pay_rent(player))
     elif tile.tile_type == "tax":
-        tax = 100
-        print(f"{player.name} pays ${tax} tax.")
-        # Prefer using Player.pay if available
-        if hasattr(player, "pay"):
-            player.pay(tax)
-        else:
-            player.money -= tax
-
-    elif tile.tile_type == "chance":
-        card = draw_chance()
-        handle_card(player, card, len(tiles))
-
-    elif tile.tile_type == "community":
-        card = draw_community_chest()
-        handle_card(player, card, len(tiles))
-
-    elif tile.tile_type == "go_to_jail":
-        if hasattr(player, "go_to_jail"):
-            print(player.go_to_jail())
-        else:
-            player.position = 10
-            print(f"{player.name} sent to Jail.")
-
-    elif tile.tile_type == "go":
-        # Optional: award when landing on Go (rules vary)
-        pass
-
+        console.print(f"{player.name} pays $100 tax")
+        player.money -= 100
     elif tile.tile_type == "jail":
-        print(f"{player.name} is just visiting Jail.")
+        console.print(f"{player.name} is just visiting Jail.")
+    elif tile.tile_type in ["chance", "community"]:
+        console.print(f"{player.name} landed on {tile.tile_type.title()} - no action implemented yet.")
 
-def play_game():
-    # Show board styling if your board.py has it
-    try:
-        print_board()
-    except Exception:
-        pass
-
-    tiles = setup_tiles()
-    players = setup_players()
-
-    # Simple loop: keep playing until someone hits $0 or less
-    while True:
+def main():
+    console.print("[bold green]🎲 Welcome to Simple Monopoly![/bold green]")
+    init_db()
+    players = load_players()
+    if not players:
+        num_players = int(Prompt.ask("How many players?", choices=["2", "3", "4"], default="2"))
+        for i in range(num_players):
+            name = Prompt.ask(f"Enter name for player {i+1}")
+            players.append(Player(name))
         for p in players:
-            if p.money <= 0:
-                print(f"\n{p.name} is bankrupt! Game over.")
-                return
-            take_turn(p, tiles)
-            print(f"{p.name} now has ${p.money}")
+            save_player(p)
+
+    game_board = board()
+    turn = 0
+    while True:
+        console.print("\n" + "="*50)
+        display_players(players)
+        current_player = players[turn % len(players)]
+        take_turn(current_player, game_board, players)
+
+        for p in players:
+            save_player(p)
+
+        active_players = [p for p in players if p.money > 0]
+        if len(active_players) == 1:
+            console.print(f"\n🏆 [bold yellow]{active_players[0].name}[/bold yellow] wins the game!")
+            break
+        turn += 1
 
 if __name__ == "__main__":
-    play_game()
+    main()
