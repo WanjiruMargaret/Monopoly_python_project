@@ -10,7 +10,7 @@ A simple console-based Monopoly game in Python using **Rich** for styling and **
 - Roll dice and move around the board.
 - Buy properties and pay rent.
 - Jail, Chance, and Community Chest placeholders.
-- Player data saved to an SQLite database.
+- Player data saved to an SQLachemy database.
 - Styled output using Rich tables and console formatting.
 
 ---
