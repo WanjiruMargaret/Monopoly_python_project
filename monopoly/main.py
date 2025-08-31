@@ -1,4 +1,4 @@
-from rich.console import Console
+from rich.console import Console 
 from rich.table import Table
 from rich.prompt import Prompt
 import random
@@ -22,7 +22,7 @@ def display_players(players):
 
     console.print(table)
 
-def take_turn(player, board, players):
+def take_turn(player, game_board, players):
     if player.in_jail:
         console.print(f"[red]{player.name} is in jail![/red] (turns left: {player.jail_turns})")
         player.move(0)
@@ -35,7 +35,7 @@ def take_turn(player, board, players):
     result = player.move(dice)
     console.print(result)
 
-    tile = board[player.position % len(board)]
+    tile = game_board[player.position % len(game_board)]
     if tile.tile_type == "property":
         if tile.owner is None:
             choice = Prompt.ask(f"Do you want to buy {tile.name} for ${tile.price}? (y/n)", choices=["y", "n"])
@@ -71,6 +71,7 @@ def main():
         current_player = players[turn % len(players)]
         take_turn(current_player, game_board, players)
 
+        # persist after each turn
         for p in players:
             save_player(p)
 
@@ -78,6 +79,7 @@ def main():
         if len(active_players) == 1:
             console.print(f"\n🏆 [bold yellow]{active_players[0].name}[/bold yellow] wins the game!")
             break
+
         turn += 1
 
 if __name__ == "__main__":
