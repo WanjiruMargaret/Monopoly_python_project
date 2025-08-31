@@ -1,58 +1,58 @@
-import sqlite3
+from sqlalchemy import create_engine, Column, Integer, String, Boolean, LargeBinary
+from sqlalchemy.orm import declarative_base, sessionmaker
 import pickle
 from player import Player
 
-DB_NAME = "monopoly.db"
+# SQLite DB URL
+DB_URL = "sqlite:///monopoly.db"
 
-def get_connection():
-    return sqlite3.connect(DB_NAME)
+engine = create_engine(DB_URL, echo=False, future=True)
+SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+Base = declarative_base()
+
+class PlayerModel(Base):
+    __tablename__ = "players"
+
+    name = Column(String, primary_key=True, index=True)
+    money = Column(Integer, nullable=False, default=1500)
+    position = Column(Integer, nullable=False, default=0)
+    properties = Column(LargeBinary)  # pickled list[Tile]
+    in_jail = Column(Boolean, default=False)
+    jail_turns = Column(Integer, default=0)
 
 def init_db():
-    with get_connection() as conn:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS players (
-                name TEXT PRIMARY KEY,
-                money INTEGER,
-                position INTEGER,
-                properties BLOB,
-                in_jail INTEGER,
-                jail_turns INTEGER
-            )
-        """)
-        conn.commit()
+    Base.metadata.create_all(bind=engine)
     print("✅ Database setup complete!")
 
 def save_player(player: Player):
-    with get_connection() as conn:
-        conn.execute("""
-            INSERT INTO players (name, money, position, properties, in_jail, jail_turns)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(name) DO UPDATE SET
-                money=excluded.money,
-                position=excluded.position,
-                properties=excluded.properties,
-                in_jail=excluded.in_jail,
-                jail_turns=excluded.jail_turns
-        """, (
-            player.name,
-            player.money,
-            player.position,
-            pickle.dumps(player.properties),
-            int(player.in_jail),
-            player.jail_turns
-        ))
-        conn.commit()
+    session = SessionLocal()
+    try:
+        db_player = session.get(PlayerModel, player.name)
+        if not db_player:
+            db_player = PlayerModel(name=player.name)
+
+        db_player.money = player.money
+        db_player.position = player.position
+        db_player.properties = pickle.dumps(player.properties) if player.properties is not None else None
+        db_player.in_jail = player.in_jail
+        db_player.jail_turns = player.jail_turns
+
+        session.add(db_player)
+        session.commit()
+    finally:
+        session.close()
 
 def load_players():
+    session = SessionLocal()
     players = []
-    with get_connection() as conn:
-        cursor = conn.execute("SELECT name, money, position, properties, in_jail, jail_turns FROM players")
-        for row in cursor.fetchall():
-            name, money, position, properties_blob, in_jail, jail_turns = row
-            p = Player(name, money)
-            p.position = position
-            p.properties = pickle.loads(properties_blob) if properties_blob else []
-            p.in_jail = bool(in_jail)
-            p.jail_turns = jail_turns
+    try:
+        for row in session.query(PlayerModel).all():
+            p = Player(row.name, row.money)
+            p.position = row.position
+            p.properties = pickle.loads(row.properties) if row.properties else []
+            p.in_jail = row.in_jail
+            p.jail_turns = row.jail_turns
             players.append(p)
+    finally:
+        session.close()
     return players
